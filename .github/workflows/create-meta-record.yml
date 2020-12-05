@@ -19,6 +19,7 @@ jobs:
           aws-region: ap-northeast-1
 
       - name: S3 Sync
-        env: S3_SYNC_BUCKET: ${{ secrets.S3_SYNC_BUCKET }}
+        env:
+          S3_SYNC_BUCKET: ${{ secrets.S3_SYNC_BUCKET }}
         run: |
           aws s3 sync s3://$S3_SYNC_BUCKET /content/meta/
