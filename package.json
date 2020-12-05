@@ -1,0 +1,12 @@
+{
+  "name": "sublog-infra",
+  "version": "1.0.0",
+  "scripts": {
+    "test": ""
+  },
+  "dependencies": {
+    "@aws-cdk/aws-lambda": "^1.76.0"
+  },
+  "devDependencies": {},
+  "license": "MIT"
+}
