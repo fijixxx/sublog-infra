@@ -1,3 +1,5 @@
 /node_modules
 .env
 /src/lambda/__pycache__
+/python
+/pythonLayer.zip
