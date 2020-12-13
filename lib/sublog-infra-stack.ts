@@ -1,10 +1,9 @@
 import * as cdk from '@aws-cdk/core';
-import * as lambda from '@aws-cdk/aws-lambda'
 import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
-import * as s3n from '@aws-cdk/aws-s3-notifications'
-import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
 
+import { AssetCode, Function, Runtime, Code, LayerVersion} from '@aws-cdk/aws-lambda'
+import { RestApi, LambdaIntegration, IResource, MockIntegration, PassthroughBehavior} from '@aws-cdk/aws-apigateway'
 export class SublogInfraStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -24,23 +23,72 @@ export class SublogInfraStack extends cdk.Stack {
       code: Code.fromAsset('layer')
     })
 
-    const sublogLambda = new lambda.Function(this, 'sublog-create-meta-record', {
+    const sublogLambda = new Function(this, 'sublog-create-meta-record', {
       functionName: 'sublog-create-meta-record',
-      runtime: lambda.Runtime.PYTHON_3_8,
-      code: lambda.AssetCode.fromAsset('src'),
+      runtime: Runtime.PYTHON_3_8,
+      code: AssetCode.fromAsset('src'),
       handler: 'create_meta.lambda_handler',
       role: executionLambdaRole,
       layers: [sublogLambdaLayer]
     });
 
-    const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
+    // meta/*.md, text/*.txt 格納用バケット
+    new s3.Bucket(this, 'assetsBucket', {
       bucketName: "sublog-assets"
     })
 
-    assetsBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(sublogLambda)
-    )
+    // api 作成
+    const sublogapi = new RestApi(this, "sublog", {
+      restApiName: 'sublog API',
+      description: 'sublog API'
+    })
+
+    // Lambda Integration 作成
+    const createRecordIntegration = new LambdaIntegration(sublogLambda)
+
+    const sublogactions = sublogapi.root.addResource('githubactions')
+
+    sublogactions.addMethod('GET', createRecordIntegration)
+    addCorsOptions(sublogactions)
+}
+}
+
+export function addCorsOptions(apiResoucce: IResource){
+  apiResoucce.addMethod(
+    'OPTIONS',
+    new MockIntegration({
+      integrationResponses: [
+        {
+          statusCode: "200",
+          responseParameters: {
+            "method.response.header.Access-Control-Allow-Headers":
+            "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
+            "method.response.header.Access-Control-Allow-Origin": "'*'",
+            "method.response.header.Access-Control-Allow-Credentials":
+            "'false'",
+            "method.response.header.Access-Control-Allow-Methods":
+            "'OPTIONS,GET,PUT,POST,DELETE'",
+          },
+        },
+      ],
+      passthroughBehavior: PassthroughBehavior.NEVER,
+      requestTemplates: {
+        "application/json": '{"statusCode": 200}',
+      },
+    }),  {
+    methodResponses: [
+      {
+      statusCode: "200",
+        responseParameters: {
+        "method.response.header.Access-Control-Allow-Headers": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+        "method.response.header.Access-Control-Allow-Credentials": true,
+        "method.response.header.Access-Control-Allow-Origin": true,
+        },
+      },
+    ],
   }
+  )
 }
 
 const app = new cdk.App();

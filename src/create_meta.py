@@ -2,6 +2,7 @@ import ast
 import uuid
 import datetime
 import random
+import json
 
 import boto3
 import toml
@@ -121,4 +122,7 @@ def lambda_handler(event, context):
                 )
     except Exception as e:
         raise e
-    return True
+    return {
+        'statusCode': 200,
+        'body': json.dumps('ok')
+    }
