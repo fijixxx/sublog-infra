@@ -24,6 +24,7 @@
     "@aws-cdk/aws-apigateway": "^1.78.0",
     "@aws-cdk/aws-lambda": "^1.78.0",
     "@aws-cdk/aws-s3": "^1.78.0",
+    "@aws-cdk/aws-s3-notifications": "^1.78.0",
     "@aws-cdk/core": "1.76.0",
     "@types/aws-lambda": "^8.10.66",
     "source-map-support": "^0.5.16"

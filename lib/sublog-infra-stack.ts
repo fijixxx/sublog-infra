@@ -1,9 +1,11 @@
 import * as cdk from '@aws-cdk/core';
+import * as lambda from '@aws-cdk/aws-lambda'
 import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
+import * as s3n from '@aws-cdk/aws-s3-notifications'
+import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
+import { NotificationKeyFilter } from '@aws-cdk/aws-s3'
 
-import { AssetCode, Function, Runtime, Code, LayerVersion} from '@aws-cdk/aws-lambda'
-import { RestApi, LambdaIntegration, IResource, MockIntegration, PassthroughBehavior} from '@aws-cdk/aws-apigateway'
 export class SublogInfraStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -23,72 +25,39 @@ export class SublogInfraStack extends cdk.Stack {
       code: Code.fromAsset('layer')
     })
 
-    const sublogLambda = new Function(this, 'sublog-create-meta-record', {
-      functionName: 'sublog-create-meta-record',
-      runtime: Runtime.PYTHON_3_8,
-      code: AssetCode.fromAsset('src'),
-      handler: 'create_meta.lambda_handler',
+    const sublog_upsert_Lambda = new lambda.Function(this, 'sublog-upsert-meta-record', {
+      functionName: 'sublog-upsert-meta-record',
+      runtime: lambda.Runtime.PYTHON_3_8,
+      code: lambda.AssetCode.fromAsset('src/upsert'),
+      handler: 'upsert_meta.lambda_handler',
       role: executionLambdaRole,
       layers: [sublogLambdaLayer]
     });
 
-    // meta/*.md, text/*.txt 格納用バケット
-    new s3.Bucket(this, 'assetsBucket', {
+    const sublog_delete_Lambda = new lambda.Function(this, 'sublog-delete-meta-record', {
+      functionName: 'sublog-delete-meta-record',
+      runtime: lambda.Runtime.PYTHON_3_8,
+      code: lambda.AssetCode.fromAsset('src/delete'),
+      handler: 'delete_meta.lambda_handler',
+      role: executionLambdaRole,
+      layers: [sublogLambdaLayer]
+    });
+
+
+    const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
       bucketName: "sublog-assets"
     })
 
-    // api 作成
-    const sublogapi = new RestApi(this, "sublog", {
-      restApiName: 'sublog API',
-      description: 'sublog API'
-    })
+    const metaNotificationFilter: NotificationKeyFilter = { prefix: 'meta/' }
 
-    // Lambda Integration 作成
-    const createRecordIntegration = new LambdaIntegration(sublogLambda)
+    assetsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(sublog_upsert_Lambda), metaNotificationFilter
+    )
 
-    const sublogactions = sublogapi.root.addResource('githubactions')
-
-    sublogactions.addMethod('GET', createRecordIntegration)
-    addCorsOptions(sublogactions)
-}
-}
-
-export function addCorsOptions(apiResoucce: IResource){
-  apiResoucce.addMethod(
-    'OPTIONS',
-    new MockIntegration({
-      integrationResponses: [
-        {
-          statusCode: "200",
-          responseParameters: {
-            "method.response.header.Access-Control-Allow-Headers":
-            "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-            "method.response.header.Access-Control-Allow-Origin": "'*'",
-            "method.response.header.Access-Control-Allow-Credentials":
-            "'false'",
-            "method.response.header.Access-Control-Allow-Methods":
-            "'OPTIONS,GET,PUT,POST,DELETE'",
-          },
-        },
-      ],
-      passthroughBehavior: PassthroughBehavior.NEVER,
-      requestTemplates: {
-        "application/json": '{"statusCode": 200}',
-      },
-    }),  {
-    methodResponses: [
-      {
-      statusCode: "200",
-        responseParameters: {
-        "method.response.header.Access-Control-Allow-Headers": true,
-        "method.response.header.Access-Control-Allow-Methods": true,
-        "method.response.header.Access-Control-Allow-Credentials": true,
-        "method.response.header.Access-Control-Allow-Origin": true,
-        },
-      },
-    ],
+    assetsBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED, new s3n.LambdaDestination(sublog_delete_Lambda), metaNotificationFilter
+    )
   }
-  )
 }
 
 const app = new cdk.App();
