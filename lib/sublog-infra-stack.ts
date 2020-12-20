@@ -48,7 +48,7 @@ export class SublogInfraStack extends cdk.Stack {
       bucketName: "sublog-assets"
     })
 
-    const metaNotificationFilter: NotificationKeyFilter = { prefix: 'meta/' }
+    const metaNotificationFilter: NotificationKeyFilter = { prefix: 'meta/', suffix: '.toml' }
 
     assetsBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(sublog_upsert_Lambda), metaNotificationFilter

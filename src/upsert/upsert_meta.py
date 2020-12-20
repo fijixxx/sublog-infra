@@ -1,5 +1,8 @@
 
 from models import models
+import requests
+import json
+import ast
 import toml
 import boto3
 import random
@@ -16,6 +19,15 @@ def lambda_handler(event, context):
     メタデータ.toml のファイル名と DynamoDB レコードの fileName 項目を突合した結果に応じて、
     DynamoDB レコードに対して upsert 処理を行う関数
     """
+    # SecretsManager から、通知先 url を取得
+    secrets_client = boto3.client('secretsmanager')
+    raw_secret = secrets_client.get_secret_value(
+        SecretId='sublog_discord_url',
+    )['SecretString']
+    # Key 指定で value を取得できないので注意(おそらく SecretsManager 特有)
+    # FYI: https://dev.classmethod.jp/articles/secrets_manager_tips_get_api_key/
+    secret = ast.literal_eval(raw_secret)
+    url = secret['url']
 
     # s3 notification から、 put されたファイルの名前を取得
     file_name = event['Records'][0]['s3']['object']['key'][5:-5]
@@ -50,6 +62,9 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.exception('## Exception')
         logger.exception(e)
+        notification_content = create_notification_content(
+            __file__, '## Exception')
+        post_notification(url, notification_content, logger)
         raise
 
     # レコード作成
@@ -100,5 +115,47 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.exception('## Exception')
         logger.exception(e)
+        notification_content = create_notification_content(
+            __file__, '## Exception')
+        post_notification(url, notification_content, logger)
         raise
+    notification_content = create_notification_content(
+        __file__, '以下の内容で記事メタデータを作成しました\r title: %s \r fileName: %s' % (new_record['title'], new_record['fileName']))
+    post_notification(url, notification_content, logger)
     return True
+
+
+def post_notification(_url, _content, logger):
+    """処理結果通知の実行関数
+    TODO あとで Layer に切り出す
+    Args:
+      _url(string): ポスト先のURL
+      _content(string): ポストする内容
+      logger(Logger)
+    """
+    try:
+        requests.post(
+            _url,
+            json.dumps({'content': _content}),
+            headers={'Content-Type': 'application/json'}
+        )
+    except Exception as e:
+        logger.exception("## Exception")
+        logger.exception(e)
+        raise
+
+    return True
+
+
+def create_notification_content(_filename, _content):
+    """結果通知のメッセージ内容を作る
+    Args:
+      _filename(string): 通知元のファイル名
+      _content(string): 通知する内容
+    Returns:
+      string: 平文の内容を返す
+
+    """
+    notification_content = 'Message from %s : %s' % (_filename, _content)
+
+    return notification_content
