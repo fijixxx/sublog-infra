@@ -12,3 +12,6 @@ cdk.out
 
 .env
 layer
+
+# リダイレクト Lambda 用途
+!src/redirect/*
