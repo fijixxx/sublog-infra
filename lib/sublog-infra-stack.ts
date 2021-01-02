@@ -132,7 +132,7 @@ export class SublogInfraStack extends cdk.Stack {
     /**
      * SQS キュー作成とトリガー Lambda 設定
      */
-    const sublogQueue = new Queue(this, 'sublogQue', {})
+    const sublogQueue = new Queue(this, 'sublogQueue', {})
     sublog_highlighter_Lambda.addEventSource(new SqsEventSource(sublogQueue))
 
     /**
