@@ -15,3 +15,4 @@ layer
 
 # リダイレクト Lambda 用途
 !src/redirect/*
+!.eslintrc.js
