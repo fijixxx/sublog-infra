@@ -122,6 +122,19 @@ def lambda_handler(event, context):
     notification_content = create_notification_content(
         __file__, '以下の内容で記事メタデータを作成しました\r title: %s \r fileName: %s' % (new_record['title'], new_record['fileName']))
     post_notification(url, notification_content, logger)
+
+    # SQS にメタデータを作成した記事の Id を送る（Body 生成, シンタックスハイライト）
+    # SecretsManager から、SQS の url を取得
+    sqs_raw_secret = secrets_client.get_secret_value(
+        SecretId='sublogHighlighterSQS',
+    )['SecretString']
+    sqs_secret = ast.literal_eval(sqs_raw_secret)
+    sqs_url = sqs_secret['url']
+
+    sqs_client = boto3.client('sqs')
+    sqs_client.send_message(
+        QueueUrl=sqs_url, MessageBody=json.dumps({"id": new_record['id']}))
+
     return True
 
 

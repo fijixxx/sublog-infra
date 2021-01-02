@@ -5,6 +5,13 @@ import * as s3 from '@aws-cdk/aws-s3'
 import * as s3n from '@aws-cdk/aws-s3-notifications'
 import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
 import { NotificationKeyFilter } from '@aws-cdk/aws-s3'
+import { Queue } from '@aws-cdk/aws-sqs'
+import { SqsEventSource } from '@aws-cdk/aws-lambda-event-sources';
+import * as secretsmanager from '@aws-cdk/aws-secretsmanager';
+/**
+ * ↓ なぜかこれを要求される。。
+ */
+import { Duration } from '@aws-cdk/aws-cloudwatch/node_modules/@aws-cdk/core'
 
 /**
  * sublog の AWS インフラを AWS CDK で IaC するためのコード。
@@ -22,17 +29,41 @@ export class SublogInfraStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSQSFullAccess'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('SecretsManagerReadWrite'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBFullAccess'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
       ]})
+
+     /**
+      * シンタックスハイライター Lambda 用ロールを作成
+      */
+    const highlighterLambdaRole = new iam.Role(this, 'sublogHighlighterLambdaRole', {
+      roleName: 'sublogHighlighterLambdaRole',
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaSQSQueueExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('SecretsManagerReadWrite'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBFullAccess'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
+      ]})
+
 
     /**
      * 記事入稿/メタデータ削除 処理用の Lambda が依存するパッケージの Layer
      */
     const sublogLambdaLayer = new LayerVersion(this, 'sublogLayer', {
       compatibleRuntimes: [Runtime.PYTHON_3_8],
-      code: Code.fromAsset('layer')
+      code: Code.fromAsset('layer/python')
+    })
+
+    /**
+     * 記事入稿/メタデータ削除 処理用の Lambda が依存するパッケージの Layer
+     */
+    const sublogHighlighterLayer = new LayerVersion(this, 'sublogHighlighterLayer', {
+      compatibleRuntimes: [Runtime.NODEJS_12_X],
+      code: Code.fromAsset('layer/nodejs')
     })
 
     /**
@@ -44,7 +75,8 @@ export class SublogInfraStack extends cdk.Stack {
       code: lambda.AssetCode.fromAsset('src/upsert'),
       handler: 'upsert_meta.lambda_handler',
       role: executionLambdaRole,
-      layers: [sublogLambdaLayer]
+      layers: [sublogLambdaLayer],
+      timeout: Duration.seconds(30)
     });
 
     /**
@@ -56,7 +88,21 @@ export class SublogInfraStack extends cdk.Stack {
       code: lambda.AssetCode.fromAsset('src/delete'),
       handler: 'delete_meta.lambda_handler',
       role: executionLambdaRole,
-      layers: [sublogLambdaLayer]
+      layers: [sublogLambdaLayer],
+      timeout: Duration.seconds(30)
+    });
+
+    /**
+     * 記事シンタックスハイライター Lambda セクション
+     */
+    const sublog_highlighter_Lambda = new lambda.Function(this, 'sublog-highlight-record', {
+      functionName: 'sublog-highlight-record',
+      runtime: lambda.Runtime.NODEJS_12_X,
+      code: lambda.AssetCode.fromAsset('src/highlight/src'),
+      handler: 'index.handler',
+      role: highlighterLambdaRole,
+      layers: [sublogHighlighterLayer],
+      timeout: Duration.seconds(30)
     });
 
 
@@ -82,6 +128,32 @@ export class SublogInfraStack extends cdk.Stack {
     assetsBucket.addEventNotification(
       s3.EventType.OBJECT_REMOVED, new s3n.LambdaDestination(sublog_delete_Lambda), metaNotificationFilter
     )
+
+    /**
+     * SQS キュー作成とトリガー Lambda 設定
+     */
+    const sublogQueue = new Queue(this, 'sublogQue', {})
+    sublog_highlighter_Lambda.addEventSource(new SqsEventSource(sublogQueue))
+
+    /**
+     * SQS キューポリシー作成
+     */
+    const sublogQueuePolicy = new iam.PolicyStatement()
+    sublogQueuePolicy.addActions("SQS:SendMessage")
+    sublogQueuePolicy.addResources(sublogQueue.queueArn)
+    sublogQueuePolicy.addPrincipals(
+       new iam.ServicePrincipal('lambda.amazonaws.com')),
+    sublogQueue.addToResourcePolicy(sublogQueuePolicy)
+
+    /**
+     * SQS の URL をシークレトマネージャー出力
+     */
+    new secretsmanager.Secret(this, 'sublogHighlighterSQS', {
+      secretName: 'sublogHighlighterSQS',
+      generateSecretString: {
+        secretStringTemplate:JSON.stringify({url: sublogQueue.queueUrl}),
+        generateStringKey: 'password',
+    }})
   }
 }
 
