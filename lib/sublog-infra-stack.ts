@@ -4,7 +4,7 @@ import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
 import * as s3n from '@aws-cdk/aws-s3-notifications'
 import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
-import { BlockPublicAccess, Bucket, NotificationKeyFilter } from '@aws-cdk/aws-s3'
+import { BlockPublicAccess, NotificationKeyFilter } from '@aws-cdk/aws-s3'
 import { Queue } from '@aws-cdk/aws-sqs'
 import { SqsEventSource } from '@aws-cdk/aws-lambda-event-sources';
 import * as secretsmanager from '@aws-cdk/aws-secretsmanager';
@@ -150,7 +150,7 @@ export class SublogInfraStack extends cdk.Stack {
     assetsTrail.addS3EventSelector([{
       bucket: assetsBucket,
     }],{
-      readWriteType: ReadWriteType.ALL
+      readWriteType: ReadWriteType.WRITE_ONLY
     })
 
     /**
