@@ -4,10 +4,11 @@ import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
 import * as s3n from '@aws-cdk/aws-s3-notifications'
 import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
-import { NotificationKeyFilter } from '@aws-cdk/aws-s3'
+import { BlockPublicAccess, NotificationKeyFilter } from '@aws-cdk/aws-s3'
 import { Queue } from '@aws-cdk/aws-sqs'
 import { SqsEventSource } from '@aws-cdk/aws-lambda-event-sources';
 import * as secretsmanager from '@aws-cdk/aws-secretsmanager';
+import { Trail, ReadWriteType } from '@aws-cdk/aws-cloudtrail';
 /**
  * ↓ なぜかこれを要求される。。
  */
@@ -110,7 +111,46 @@ export class SublogInfraStack extends cdk.Stack {
      * 記事入稿データ保管用の S3 バケット作成セクション
      */
     const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
-      bucketName: "sublog-assets"
+      bucketName: "sublog-assets",
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL
+    })
+
+    /**
+     * 記事データのログ(trail)格納バケットを作成
+     */
+    const trailBucket = new s3.Bucket(this, 'trailBucket', {
+      bucketName: 'sublog-assets-trail',
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL
+    })
+
+    /**
+     * trail 用バケットのバケットポリシーを設定
+     * https://docs.aws.amazon.com/ja_jp/awscloudtrail/latest/userguide/create-s3-bucket-policy-for-cloudtrail.html
+     */
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ServicePrincipal('cloudtrail.amazonaws.com')],
+      actions: ['s3:GetBucketAcl'],
+      resources: [trailBucket.bucketArn]
+    })
+
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.ServicePrincipal('cloudtrail.amazonaws.com')],
+      actions: ['s3:PutObject'],
+      resources: [trailBucket.bucketArn + '/AWSLogs/' + this.account + '/*'],
+      conditions: {"StringEquals": {"s3:x-amz-acl": "bucket-owner-full-control"}}
+    })
+
+    /**
+     * 記事データ用 S3 のロギング用 trail を作成
+     */
+    const assetsTrail = new Trail(this, 'assetsTrail', {
+      bucket: trailBucket})
+    assetsTrail.addS3EventSelector([{
+      bucket: assetsBucket,
+    }],{
+      readWriteType: ReadWriteType.WRITE_ONLY
     })
 
     /**
