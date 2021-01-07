@@ -150,7 +150,7 @@ export class SublogInfraStack extends cdk.Stack {
     assetsTrail.addS3EventSelector([{
       bucket: assetsBucket,
     }],{
-      readWriteType: ReadWriteType.WRITE_ONLY
+      readWriteType: ReadWriteType.ALL
     })
 
     /**
