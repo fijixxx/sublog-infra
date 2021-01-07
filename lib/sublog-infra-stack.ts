@@ -4,10 +4,11 @@ import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
 import * as s3n from '@aws-cdk/aws-s3-notifications'
 import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
-import { NotificationKeyFilter } from '@aws-cdk/aws-s3'
+import { Bucket, NotificationKeyFilter } from '@aws-cdk/aws-s3'
 import { Queue } from '@aws-cdk/aws-sqs'
 import { SqsEventSource } from '@aws-cdk/aws-lambda-event-sources';
 import * as secretsmanager from '@aws-cdk/aws-secretsmanager';
+import { Trail, ReadWriteType } from '@aws-cdk/aws-cloudtrail';
 /**
  * ↓ なぜかこれを要求される。。
  */
@@ -111,6 +112,18 @@ export class SublogInfraStack extends cdk.Stack {
      */
     const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
       bucketName: "sublog-assets"
+    })
+
+    const IassetsBucket: s3.IBucket = Bucket.fromBucketArn(this, 'IassetsBucket', assetsBucket.bucketArn)
+
+    /**
+     * 記事データ用 S3 のロギング用 trail を作成
+     */
+    const assetsTrail = new Trail(this, 'assetsTrail')
+    assetsTrail.addS3EventSelector([{
+      bucket: IassetsBucket,
+    }],{
+      readWriteType: ReadWriteType.WRITE_ONLY
     })
 
     /**
