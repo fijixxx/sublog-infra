@@ -112,15 +112,16 @@ export class SublogInfraStack extends cdk.Stack {
      */
     const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
       bucketName: "sublog-assets",
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
     })
 
     /**
-     * 記事データのログ(trail)格納バケットを作成
+     * CloudTrail イベント格納 S3 バケット
      */
     const trailBucket = new s3.Bucket(this, 'trailBucket', {
-      bucketName: 'sublog-assets-trail',
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
     })
 
     /**
@@ -143,13 +144,25 @@ export class SublogInfraStack extends cdk.Stack {
     })
 
     /**
-     * 記事データ用 S3 のロギング用 trail を作成
+     * trail を作成
      */
-    const assetsTrail = new Trail(this, 'assetsTrail', {
-      bucket: trailBucket})
-    assetsTrail.addS3EventSelector([{
+    const trail = new Trail(this, 'trail', {
+      bucket: trailBucket
+    })
+
+   /**
+    * ↑ の trail に、出力したい S3 DataEvent のフィルター設定を追加する
+    */
+    trail.addS3EventSelector([{
       bucket: assetsBucket,
     }],{
+      /**
+       * PutObject/ DeleteObjects について、それぞれ
+       * managementEvent: 0 (つまり DataEvent ) かつ
+       * readOnly: 0 (つまり書き込みイベント)
+       * を出力するように設定(Logs Insights にもこれを設定してフィルタリングする)
+       */
+      includeManagementEvents: false,
       readWriteType: ReadWriteType.WRITE_ONLY
     })
 

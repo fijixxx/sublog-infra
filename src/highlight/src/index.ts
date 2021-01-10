@@ -76,7 +76,7 @@ exports.handler = async (event: any) => {
     const decoder = new TextDecoder()
     const decodedBody = decoder.decode(targetObject.Body)
 
-    const highlightClient = (await shiki.getHighlighter({theme: 'nord'}))
+    const highlightClient = (await shiki.getHighlighter({theme: 'material-theme-default'}))
     /**
      * codeToHtml にモンキーパッチするか何かが必要
      */
