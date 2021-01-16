@@ -3,6 +3,9 @@
 *.d.ts
 node_modules
 
+# cloudinary の設定ファイル用(空ファイル)
+.wellknown/
+
 # CDK asset staging directory
 .cdk.staging
 cdk.out
