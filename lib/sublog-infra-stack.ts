@@ -117,6 +117,17 @@ export class SublogInfraStack extends cdk.Stack {
     })
 
     /**
+     * Cloudinary 用のバケットポリシーを設定
+     * FIXME: デプロイ挙動があやしい
+     */
+    new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      principals: [new iam.AccountPrincipal('232482882421')],
+      actions: ['s3:GetObject'],
+      resources: [assetsBucket.bucketArn + '/public/*']
+    })
+
+    /**
      * CloudTrail イベント格納 S3 バケット
      */
     const trailBucket = new s3.Bucket(this, 'trailBucket', {
