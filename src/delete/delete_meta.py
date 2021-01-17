@@ -15,7 +15,7 @@ def lambda_handler(event, context):
     # SecretsManager から、通知先 url を取得
     secrets_client = boto3.client('secretsmanager')
     raw_secret = secrets_client.get_secret_value(
-        SecretId='sublog_discord_url',
+        SecretId='sublog_slack_url',
     )['SecretString']
     # Key 指定で value を取得できないので注意(おそらく SecretsManager 特有)
     # FYI: https://dev.classmethod.jp/articles/secrets_manager_tips_get_api_key/
@@ -81,7 +81,12 @@ def post_notification(_url, _content, logger):
     try:
         requests.post(
             _url,
-            json.dumps({'content': _content}),
+            json.dumps({
+                "channel": "#notification",
+                "username": "webhookbot",
+                "text": _content,
+                "icon_emoji": ":ghost:"
+            }),
             headers={'Content-Type': 'application/json'}
         )
     except Exception as e:
