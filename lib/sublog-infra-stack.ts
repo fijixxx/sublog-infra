@@ -3,7 +3,7 @@ import * as lambda from '@aws-cdk/aws-lambda'
 import * as iam from '@aws-cdk/aws-iam'
 import * as s3 from '@aws-cdk/aws-s3'
 import * as s3n from '@aws-cdk/aws-s3-notifications'
-import { Code, LayerVersion, Runtime } from '@aws-cdk/aws-lambda';
+import { Code, LayerVersion, Runtime, S3Code } from '@aws-cdk/aws-lambda';
 import { BlockPublicAccess, NotificationKeyFilter } from '@aws-cdk/aws-s3'
 import { Queue } from '@aws-cdk/aws-sqs'
 import { SqsEventSource } from '@aws-cdk/aws-lambda-event-sources';
@@ -52,31 +52,29 @@ export class SublogInfraStack extends cdk.Stack {
 
 
     /**
-     * 記事入稿/メタデータ削除 処理用の Lambda が依存するパッケージの Layer
-     */
-    const sublogLambdaLayer = new LayerVersion(this, 'sublogLayer', {
-      compatibleRuntimes: [Runtime.PYTHON_3_8],
-      code: Code.fromAsset('layer/python')
-    })
-
-    /**
-     * 記事入稿/メタデータ削除 処理用の Lambda が依存するパッケージの Layer
+     * 記事のシンタックスハイライター Lambda が依存する Layer
      */
     const sublogHighlighterLayer = new LayerVersion(this, 'sublogHighlighterLayer', {
       compatibleRuntimes: [Runtime.NODEJS_12_X],
       code: Code.fromAsset('layer/nodejs')
     })
 
+
+
+    /**
+     * 記事入稿 Lambda ソースコードを格納する S3 バケットのインポートセクション
+     */
+    const srcBucket = s3.Bucket.fromBucketName(this, "srcBucket", "sublog-src")
+
     /**
      * 記事入稿用 Lambda セクション
      */
     const sublog_upsert_Lambda = new lambda.Function(this, 'sublog-upsert-meta-record', {
       functionName: 'sublog-upsert-meta-record',
-      runtime: lambda.Runtime.PYTHON_3_8,
-      code: lambda.AssetCode.fromAsset('src/upsert'),
-      handler: 'upsert_meta.lambda_handler',
+      runtime: lambda.Runtime.GO_1_X,
+      code: (new S3Code(srcBucket, "lambda/upsert/main.zip")),
+      handler: 'main',
       role: executionLambdaRole,
-      layers: [sublogLambdaLayer],
       timeout: Duration.seconds(30)
     });
 
@@ -85,11 +83,10 @@ export class SublogInfraStack extends cdk.Stack {
      */
     const sublog_delete_Lambda = new lambda.Function(this, 'sublog-delete-meta-record', {
       functionName: 'sublog-delete-meta-record',
-      runtime: lambda.Runtime.PYTHON_3_8,
-      code: lambda.AssetCode.fromAsset('src/delete'),
-      handler: 'delete_meta.lambda_handler',
+      runtime: lambda.Runtime.GO_1_X,
+      code: (new S3Code(srcBucket, "lambda/delete/main.zip")),
+      handler: 'main',
       role: executionLambdaRole,
-      layers: [sublogLambdaLayer],
       timeout: Duration.seconds(30)
     });
 
@@ -105,7 +102,6 @@ export class SublogInfraStack extends cdk.Stack {
       layers: [sublogHighlighterLayer],
       timeout: Duration.seconds(30)
     });
-
 
     /**
      * 記事入稿データ保管用の S3 バケット作成セクション
