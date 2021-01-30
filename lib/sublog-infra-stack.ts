@@ -15,7 +15,7 @@ import { Trail, ReadWriteType } from '@aws-cdk/aws-cloudtrail';
 import { Duration } from '@aws-cdk/aws-cloudwatch/node_modules/@aws-cdk/core'
 
 /**
- * sublog の AWS インフラを AWS CDK で IaC するためのコード。
+ * sublog の AWS インフラ
  * ap-northeast-1 リージョン用
  */
 export class SublogInfraStack extends cdk.Stack {
@@ -23,7 +23,7 @@ export class SublogInfraStack extends cdk.Stack {
     super(scope, id, props);
 
     /**
-     * 記事入稿/メタデータ削除 処理用の Lambda に権限を付与するロールを作成するセクション
+     * 記事入稿/メタデータ削除 処理用の Lambda ロール
      */
     const executionLambdaRole = new iam.Role(this, 'sublogLambdaExecutionRole', {
       roleName: 'sublogLambdaExecutionRole',
@@ -37,7 +37,7 @@ export class SublogInfraStack extends cdk.Stack {
       ]})
 
      /**
-      * シンタックスハイライター Lambda 用ロールを作成
+      * シンタックスハイライター Lambda ロール
       */
     const highlighterLambdaRole = new iam.Role(this, 'sublogHighlighterLambdaRole', {
       roleName: 'sublogHighlighterLambdaRole',
@@ -50,24 +50,21 @@ export class SublogInfraStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
       ]})
 
-
     /**
-     * 記事のシンタックスハイライター Lambda が依存する Layer
+     * シンタックスハイライター Lambda が依存する Layer
      */
     const sublogHighlighterLayer = new LayerVersion(this, 'sublogHighlighterLayer', {
       compatibleRuntimes: [Runtime.NODEJS_12_X],
       code: Code.fromAsset('layer/nodejs')
     })
 
-
-
     /**
-     * 記事入稿 Lambda ソースコードを格納する S3 バケットのインポートセクション
+     * 記事入稿 Lambda ソースコードを格納する S3 バケット
      */
     const srcBucket = s3.Bucket.fromBucketName(this, "srcBucket", "sublog-src")
 
     /**
-     * 記事入稿用 Lambda セクション
+     * 記事入稿用 Lambda
      */
     const sublog_upsert_Lambda = new lambda.Function(this, 'sublog-upsert-meta-record', {
       functionName: 'sublog-upsert-meta-record',
@@ -79,7 +76,7 @@ export class SublogInfraStack extends cdk.Stack {
     });
 
     /**
-     * 記事メタデータ削除用 Lambda セクション
+     * 記事メタデータ削除用 Lambda
      */
     const sublog_delete_Lambda = new lambda.Function(this, 'sublog-delete-meta-record', {
       functionName: 'sublog-delete-meta-record',
@@ -91,7 +88,7 @@ export class SublogInfraStack extends cdk.Stack {
     });
 
     /**
-     * 記事シンタックスハイライター Lambda セクション
+     * 記事シンタックスハイライター Lambda
      */
     const sublog_highlighter_Lambda = new lambda.Function(this, 'sublog-highlight-record', {
       functionName: 'sublog-highlight-record',
@@ -104,7 +101,7 @@ export class SublogInfraStack extends cdk.Stack {
     });
 
     /**
-     * 記事入稿データ保管用の S3 バケット作成セクション
+     * 記事入稿データ保管用の S3 バケット
      */
     const assetsBucket = new s3.Bucket(this, 'assetsBucket', {
       bucketName: "sublog-assets",
@@ -113,15 +110,16 @@ export class SublogInfraStack extends cdk.Stack {
     })
 
     /**
-     * Cloudinary 用のバケットポリシーを設定
-     * FIXME: デプロイ挙動があやしい
+     * Cloudinary 用のバケットポリシー
      */
-    new iam.PolicyStatement({
+    const assetsPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       principals: [new iam.AccountPrincipal('232482882421')],
       actions: ['s3:GetObject'],
-      resources: [assetsBucket.bucketArn + '/public/*']
+      resources: [assetsBucket.bucketArn + '/public/*'],
     })
+
+    assetsBucket.addToResourcePolicy(assetsPolicy)
 
     /**
      * CloudTrail イベント格納 S3 バケット
@@ -134,7 +132,13 @@ export class SublogInfraStack extends cdk.Stack {
     /**
      * trail 用バケットのバケットポリシーを設定
      * https://docs.aws.amazon.com/ja_jp/awscloudtrail/latest/userguide/create-s3-bucket-policy-for-cloudtrail.html
+     *
+     * NOTE: 本来なら ↑↑ のように addToResourcePolicy しないといけないはずだが、
+     *       ↓の new Trail 時にいい感じにポリシー作成と割当してくれてる？
+     *       外して CDK deploy してみたところ no diff だったので、いったんコメントアウト
      */
+
+    /**
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       principals: [new iam.ServicePrincipal('cloudtrail.amazonaws.com')],
@@ -149,9 +153,10 @@ export class SublogInfraStack extends cdk.Stack {
       resources: [trailBucket.bucketArn + '/AWSLogs/' + this.account + '/*'],
       conditions: {"StringEquals": {"s3:x-amz-acl": "bucket-owner-full-control"}}
     })
+    */
 
     /**
-     * trail を作成
+     * trail
      */
     const trail = new Trail(this, 'trail', {
       bucket: trailBucket
@@ -174,12 +179,12 @@ export class SublogInfraStack extends cdk.Stack {
     })
 
     /**
-     * S3 Event Notification の プレフィックス/サフィックス を定義
+     * S3 Event Notification の プレフィックス/サフィックス
      */
     const metaNotificationFilter: NotificationKeyFilter = { prefix: 'meta/', suffix: '.toml' }
 
     /**
-     * S3 Event Notification を定義
+     * S3 Event Notification を作成
      */
     assetsBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(sublog_upsert_Lambda), metaNotificationFilter
@@ -190,7 +195,7 @@ export class SublogInfraStack extends cdk.Stack {
     )
 
     /**
-     * SQS キュー作成とトリガー Lambda 設定
+     * SQS キュー作成
      */
     const sublogQueue = new Queue(this, 'sublogQueue', {})
     sublog_highlighter_Lambda.addEventSource(new SqsEventSource(sublogQueue))
